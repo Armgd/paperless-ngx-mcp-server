@@ -119,8 +119,17 @@ async def test_download_document_too_large(
 
 
 async def test_download_document_save_to_path(
-    mcp_client: Client, fake_client: FakeClient, tmp_path
+    mcp_client: Client, fake_client: FakeClient, tmp_path, monkeypatch
 ) -> None:
+    from dataclasses import replace
+
+    from paperless_mcp import app as app_module
+    from paperless_mcp.tools import documents as docs_mod
+
+    new_settings = replace(app_module.settings, download_dir=tmp_path)
+    monkeypatch.setattr(app_module, "settings", new_settings)
+    monkeypatch.setattr(docs_mod, "settings", new_settings)
+
     blob = b"abc"
     fake_client.set_binary("/api/documents/1/download/", blob)
     target = tmp_path / "out.pdf"
@@ -130,6 +139,39 @@ async def test_download_document_save_to_path(
     )
     assert result.data["saved_to"] == str(target)
     assert target.read_bytes() == blob
+
+
+async def test_download_document_rejects_traversal(
+    mcp_client: Client, fake_client: FakeClient, tmp_path, monkeypatch
+) -> None:
+    from dataclasses import replace
+
+    from paperless_mcp import app as app_module
+    from paperless_mcp.tools import documents as docs_mod
+
+    new_settings = replace(app_module.settings, download_dir=tmp_path)
+    monkeypatch.setattr(app_module, "settings", new_settings)
+    monkeypatch.setattr(docs_mod, "settings", new_settings)
+
+    fake_client.set_binary("/api/documents/1/download/", b"x")
+    result = await mcp_client.call_tool(
+        "download_document",
+        {"document_id": 1, "save_to_path": "../escape.pdf"},
+    )
+    assert "error" in result.data
+    assert "outside" in result.data["error"].lower()
+
+
+async def test_download_document_save_disabled_without_root(
+    mcp_client: Client, fake_client: FakeClient
+) -> None:
+    fake_client.set_binary("/api/documents/1/download/", b"x")
+    result = await mcp_client.call_tool(
+        "download_document",
+        {"document_id": 1, "save_to_path": "/tmp/x.pdf"},
+    )
+    assert "error" in result.data
+    assert "PAPERLESS_DOWNLOAD_DIR" in result.data["error"]
 
 
 async def test_get_next_asn(mcp_client: Client, fake_client: FakeClient) -> None:

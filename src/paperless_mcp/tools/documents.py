@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 import base64
-from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from pydantic import Field
 
-from ..app import client, mcp
+from ..app import client, mcp, settings
 from ._helpers import slim_document
+from ._safe_path import UnsafePathError, sanitize_save_path
 
 
 @mcp.tool(
@@ -152,7 +152,10 @@ async def download_document(
     blob = await client.get_binary(f"/api/documents/{document_id}/download/", params=params)
     size = len(blob)
     if save_to_path:
-        path = Path(save_to_path).expanduser()
+        try:
+            path = sanitize_save_path(save_to_path, root=settings.download_dir)
+        except UnsafePathError as exc:
+            return {"error": str(exc)}
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(blob)
         return {"saved_to": str(path), "bytes": size}
@@ -192,7 +195,10 @@ async def get_document_preview(
     """Get document preview (PDF). Prefer save_to_path for large files."""
     blob = await client.get_binary(f"/api/documents/{document_id}/preview/")
     if save_to_path:
-        path = Path(save_to_path).expanduser()
+        try:
+            path = sanitize_save_path(save_to_path, root=settings.download_dir)
+        except UnsafePathError as exc:
+            return {"error": str(exc)}
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(blob)
         return {"saved_to": str(path), "bytes": len(blob)}

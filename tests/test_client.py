@@ -10,7 +10,11 @@ from paperless_mcp.config import Settings
 
 def _settings() -> Settings:
     return Settings(
-        base_url="http://x.invalid", token="t", timeout=5.0, verify_ssl=True
+        base_url="http://x.invalid",
+        token="t",
+        timeout=5.0,
+        verify_ssl=True,
+        download_dir=None,
     )
 
 
