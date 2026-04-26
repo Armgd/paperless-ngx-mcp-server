@@ -6,6 +6,8 @@ from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
+from ._envutil import env_bool
+
 load_dotenv()
 
 
@@ -28,5 +30,5 @@ class Settings:
             base_url=url.rstrip("/"),
             token=token,
             timeout=float(os.environ.get("PAPERLESS_TIMEOUT", "30")),
-            verify_ssl=os.environ.get("PAPERLESS_VERIFY_SSL", "true").lower() != "false",
+            verify_ssl=env_bool(os.environ.get("PAPERLESS_VERIFY_SSL"), default=True),
         )
