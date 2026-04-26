@@ -17,5 +17,6 @@ async def list_tasks(
     if isinstance(data, list):
         return data[:max_results]
     if isinstance(data, dict):
-        return data.get("results", [])[:max_results]
+        results = data.get("results") or []
+        return results[:max_results]
     return []
