@@ -81,7 +81,9 @@ class PaperlessClient:
             results = data.get("results") if isinstance(data, dict) else None
             if results is None:
                 # endpoint returns plain list
-                return data if isinstance(data, list) else []
+                if not isinstance(data, list):
+                    return []
+                return data[:max_items] if max_items is not None else data
             items.extend(results)
             if max_items is not None and len(items) >= max_items:
                 return items[:max_items]

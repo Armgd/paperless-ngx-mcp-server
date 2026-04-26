@@ -90,6 +90,16 @@ async def test_paginate_handles_plain_list() -> None:
     await c.aclose()
 
 
+async def test_paginate_caps_plain_list_with_max_items() -> None:
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=[{"id": i} for i in range(10)])
+
+    c = _make_client(handler)
+    items = await c.paginate("/api/list/", max_items=3)
+    assert len(items) == 3
+    await c.aclose()
+
+
 async def test_get_binary() -> None:
     def handler(req: httpx.Request) -> httpx.Response:
         return httpx.Response(
