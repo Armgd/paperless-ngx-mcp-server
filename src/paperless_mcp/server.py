@@ -7,6 +7,7 @@ from .app import mcp
 def main() -> None:
     # Register tools by importing modules.
     from .tools import (  # noqa: F401
+        auth,
         documents,
         highlevel,
         search,
