@@ -24,6 +24,7 @@ class FakeClient:
     def __init__(self) -> None:
         self.get_responses: dict[str, Any] = {}
         self.binary_responses: dict[str, bytes] = {}
+        self.binary_headers: dict[str, dict[str, str]] = {}
         self.paginate_responses: dict[str, list[dict[str, Any]]] = {}
         self.get_errors: dict[str, PaperlessAPIError] = {}
         self.calls: list[tuple[str, str, dict[str, Any] | None]] = []
@@ -53,6 +54,20 @@ class FakeClient:
         if path not in self.binary_responses:
             raise AssertionError(f"Unexpected GET_BIN {path}")
         return self.binary_responses[path]
+
+    def set_binary_with_headers(
+        self, path: str, blob: bytes, headers: dict[str, str]
+    ) -> None:
+        self.binary_responses[path] = blob
+        self.binary_headers[path] = headers
+
+    async def get_binary_with_headers(
+        self, path: str, **_: Any
+    ) -> tuple[bytes, dict[str, str]]:
+        self.calls.append(("GET_BIN_HDR", path, None))
+        if path not in self.binary_responses:
+            raise AssertionError(f"Unexpected GET_BIN_HDR {path}")
+        return self.binary_responses[path], self.binary_headers.get(path, {})
 
     async def post(self, path: str, **kw: Any) -> Any:
         self.calls.append(("POST", path, kw.get("params")))

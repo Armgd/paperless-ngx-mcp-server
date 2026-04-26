@@ -60,6 +60,15 @@ class PaperlessClient:
     async def get_binary(self, path: str, **kw: Any) -> bytes:
         return await self.request("GET", path, expect_binary=True, **kw)
 
+    async def get_binary_with_headers(
+        self, path: str, **kw: Any
+    ) -> tuple[bytes, dict[str, str]]:
+        clean = {k: v for k, v in (kw.get("params") or {}).items() if v is not None}
+        resp = await self._client.request("GET", path, params=clean)
+        if resp.status_code >= 400:
+            raise PaperlessAPIError(resp.status_code, resp.text, "GET", path)
+        return resp.content, dict(resp.headers)
+
     async def post(self, path: str, **kw: Any) -> Any:
         return await self.request("POST", path, **kw)
 

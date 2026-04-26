@@ -201,3 +201,13 @@ async def test_passthrough_endpoints(
     # `get_document_history` returns Any (no schema) — data=None, fall back to text.
     actual = result.data if result.data is not None else json.loads(result.content[0].text)
     assert actual == payload
+
+
+async def test_thumbnail_uses_response_mime(
+    mcp_client: Client, fake_client: FakeClient
+) -> None:
+    fake_client.set_binary_with_headers(
+        "/api/documents/1/thumb/", b"PNGDATA", {"content-type": "image/png"}
+    )
+    result = await mcp_client.call_tool("get_document_thumbnail", {"document_id": 1})
+    assert result.data["mime"] == "image/png"

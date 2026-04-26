@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import base64
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 from pydantic import Field
 
@@ -176,11 +176,14 @@ async def download_document(
 async def get_document_thumbnail(
     document_id: Annotated[int, Field(description="Document id")],
 ) -> dict[str, Any]:
-    """Get document thumbnail as base64 PNG."""
-    blob = await client.get_binary(f"/api/documents/{document_id}/thumb/")
+    """Get document thumbnail as base64."""
+    blob, headers = await client.get_binary_with_headers(
+        f"/api/documents/{document_id}/thumb/"
+    )
+    mime = headers.get("content-type", "application/octet-stream").split(";")[0].strip()
     return {
         "encoding": "base64",
-        "mime": "image/webp",
+        "mime": mime,
         "bytes": len(blob),
         "data": base64.b64encode(blob).decode("ascii"),
     }
@@ -222,18 +225,6 @@ async def get_next_asn() -> dict[str, Any]:
     return {"next_asn": val}
 
 
-_OrderingChoice = Literal[
-    "created",
-    "-created",
-    "added",
-    "-added",
-    "modified",
-    "-modified",
-    "title",
-    "-title",
-    "archive_serial_number",
-    "-archive_serial_number",
-]
 __all__ = [
     "list_documents",
     "get_document",
