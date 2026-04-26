@@ -7,14 +7,14 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from fastmcp import Context
 from pydantic import Field
 
 from ..app import client, mcp
 from ._filters import FilterRequest, build_document_filters
-from ._helpers import resolve_name_to_id, resolve_names_to_ids, slim_document
+from ._helpers import slim_document
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -133,80 +133,71 @@ async def interactive_search(
     """
     strategy = await ctx.elicit(
         "How do you want to search?",
-        response_type=["full_text", "filters", "recent"],
+        response_type=["full_text", "filters", "recent"],  # type: ignore[arg-type]
     )
     if strategy.action != "accept":
         return {"status": strategy.action, "step": "strategy"}
+    strategy_value = str(strategy.data)
 
-    if strategy.data == "full_text":
-        q = await ctx.elicit("Enter full-text query (Whoosh syntax ok):", response_type=str)
+    if strategy_value == "full_text":
+        q = await ctx.elicit("Enter full-text query (Whoosh syntax ok):", response_type=str)  # type: ignore[arg-type]
         if q.action != "accept":
             return {"status": q.action, "step": "query"}
-        data = await client.get("/api/search/", params={"query": q.data})
+        data = await client.get("/api/search/", params={"query": str(q.data)})
         results = data.get("results", []) if isinstance(data, dict) else []
         return {
             "strategy": "full_text",
-            "query": q.data,
+            "query": str(q.data),
             "count": data.get("count") if isinstance(data, dict) else len(results),
             "results": results[:max_results],
         }
 
-    if strategy.data == "recent":
-        days = await ctx.elicit("Look-back window in days?", response_type=int)
+    if strategy_value == "recent":
+        days = await ctx.elicit("Look-back window in days?", response_type=int)  # type: ignore[arg-type]
         if days.action != "accept":
             return {"status": days.action, "step": "days"}
         from datetime import date, timedelta
 
-        since = (date.today() - timedelta(days=max(1, days.data))).isoformat()
-        params = {"added__date__gte": since, "ordering": "-added"}
-        docs = await client.paginate("/api/documents/", params=params, max_items=max_results)
+        days_raw = days.data
+        days_int = max(1, int(days_raw) if isinstance(days_raw, (int, str)) else 1)
+        since = (date.today() - timedelta(days=days_int)).isoformat()
+        recent_params = {"added__date__gte": since, "ordering": "-added"}
+        recent_docs = await client.paginate(
+            "/api/documents/", params=recent_params, max_items=max_results
+        )
         return {
             "strategy": "recent",
             "since": since,
-            "count": len(docs),
-            "documents": [slim_document(d) for d in docs],
+            "count": len(recent_docs),
+            "documents": [slim_document(d) for d in recent_docs],
         }
 
     form = await ctx.elicit(
         "Provide any filters (leave blank to skip). Tags as comma-separated names.",
-        response_type=_FilterForm,
+        response_type=_FilterForm,  # type: ignore[arg-type]
     )
     if form.action != "accept":
         return {"status": form.action, "step": "filters"}
-    f = form.data
+    f = cast(_FilterForm, form.data)
 
-    params: dict[str, Any] = {"ordering": "-created"}
-    unresolved: list[str] = []
+    tag_names = (
+        [n.strip() for n in f.tag_names_csv.split(",") if n.strip()]
+        if f.tag_names_csv
+        else []
+    )
+    req = FilterRequest(
+        correspondent_name=f.correspondent_name or None,
+        document_type_name=f.document_type_name or None,
+        tag_names_all=tag_names,
+        title_contains=f.title_contains or None,
+        year=f.year or None,
+        created_after=f.created_after or None,
+        created_before=f.created_before or None,
+    )
+    filter_params, unresolved = await build_document_filters(req)
+    filter_params["ordering"] = "-created"
 
-    if f.correspondent_name:
-        cid = await resolve_name_to_id("/api/correspondents/", f.correspondent_name)
-        if cid is None:
-            unresolved.append(f"correspondent:{f.correspondent_name}")
-        else:
-            params["correspondent__id"] = cid
-    if f.document_type_name:
-        dtid = await resolve_name_to_id("/api/document_types/", f.document_type_name)
-        if dtid is None:
-            unresolved.append(f"document_type:{f.document_type_name}")
-        else:
-            params["document_type__id"] = dtid
-    if f.tag_names_csv:
-        names = [n.strip() for n in f.tag_names_csv.split(",") if n.strip()]
-        ids = await resolve_names_to_ids("/api/tags/", names)
-        if len(ids) != len(names):
-            unresolved.append(f"some tags missing in: {names}")
-        if ids:
-            params["tags__id__all"] = ",".join(str(i) for i in ids)
-    if f.title_contains:
-        params["title__icontains"] = f.title_contains
-    if f.year:
-        params["created__year"] = f.year
-    if f.created_after:
-        params["created__date__gte"] = f.created_after
-    if f.created_before:
-        params["created__date__lte"] = f.created_before
-
-    if len(params) == 1:
+    if len(filter_params) == 1:
         confirm = await ctx.elicit(
             "No filters provided. Run unfiltered listing (most recent)?",
             response_type=None,
@@ -214,13 +205,15 @@ async def interactive_search(
         if confirm.action != "accept":
             return {"status": confirm.action, "step": "confirm_unfiltered"}
 
-    docs = await client.paginate("/api/documents/", params=params, max_items=max_results)
+    filter_docs = await client.paginate(
+        "/api/documents/", params=filter_params, max_items=max_results
+    )
     return {
         "strategy": "filters",
         "unresolved": unresolved,
-        "filters_applied": {k: v for k, v in params.items() if k != "ordering"},
-        "count": len(docs),
-        "documents": [slim_document(d) for d in docs],
+        "filters_applied": {k: v for k, v in filter_params.items() if k != "ordering"},
+        "count": len(filter_docs),
+        "documents": [slim_document(d) for d in filter_docs],
     }
 
 
