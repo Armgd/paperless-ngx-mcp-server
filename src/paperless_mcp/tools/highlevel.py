@@ -13,6 +13,7 @@ from fastmcp import Context
 from pydantic import Field
 
 from ..app import client, mcp
+from ._filters import FilterRequest, build_document_filters
 from ._helpers import resolve_name_to_id, resolve_names_to_ids, slim_document
 
 
@@ -36,49 +37,21 @@ async def find_documents(
     Use this when the user asks about documents from a person/company, of a type,
     in a period, or with tags — and you don't already have IDs.
     """
-    params: dict[str, Any] = {"ordering": "-created"}
-    unresolved: list[str] = []
-
-    if correspondent_name:
-        cid = await resolve_name_to_id("/api/correspondents/", correspondent_name)
-        if cid is None:
-            unresolved.append(f"correspondent:{correspondent_name}")
-        else:
-            params["correspondent__id"] = cid
-    if document_type_name:
-        dtid = await resolve_name_to_id("/api/document_types/", document_type_name)
-        if dtid is None:
-            unresolved.append(f"document_type:{document_type_name}")
-        else:
-            params["document_type__id"] = dtid
-    if storage_path_name:
-        spid = await resolve_name_to_id("/api/storage_paths/", storage_path_name)
-        if spid is None:
-            unresolved.append(f"storage_path:{storage_path_name}")
-        else:
-            params["storage_path__id"] = spid
-    if tag_names_all:
-        ids = await resolve_names_to_ids("/api/tags/", tag_names_all)
-        if len(ids) != len(tag_names_all):
-            unresolved.append(f"some tags missing in: {tag_names_all}")
-        if ids:
-            params["tags__id__all"] = ",".join(str(i) for i in ids)
-    if tag_names_any:
-        ids = await resolve_names_to_ids("/api/tags/", tag_names_any)
-        if ids:
-            params["tags__id__in"] = ",".join(str(i) for i in ids)
-    if title_contains:
-        params["title__icontains"] = title_contains
-    if text_contains:
-        params["content__icontains"] = text_contains
-    if year is not None:
-        params["created__year"] = year
-    if month is not None:
-        params["created__month"] = month
-    if created_after:
-        params["created__date__gte"] = created_after
-    if created_before:
-        params["created__date__lte"] = created_before
+    req = FilterRequest(
+        correspondent_name=correspondent_name,
+        document_type_name=document_type_name,
+        storage_path_name=storage_path_name,
+        tag_names_all=tag_names_all or [],
+        tag_names_any=tag_names_any or [],
+        title_contains=title_contains,
+        text_contains=text_contains,
+        year=year,
+        month=month,
+        created_after=created_after,
+        created_before=created_before,
+    )
+    filter_params, unresolved = await build_document_filters(req)
+    params: dict[str, Any] = {"ordering": "-created", **filter_params}
 
     docs = await client.paginate("/api/documents/", params=params, max_items=max_results)
     return {
