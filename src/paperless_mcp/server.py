@@ -24,6 +24,11 @@ def main() -> None:
         mcp.run()
         return
     if transport in {"http", "streamable-http"}:
+        if not os.environ.get("MCP_AUTH_TOKEN"):
+            raise SystemExit(
+                "Refusing to start HTTP transport without MCP_AUTH_TOKEN. "
+                "Set MCP_AUTH_TOKEN to a long random string, or use MCP_TRANSPORT=stdio."
+            )
         mcp.run(
             transport="http",
             host=os.environ.get("MCP_HOST", "0.0.0.0"),

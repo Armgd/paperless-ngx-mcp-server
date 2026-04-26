@@ -88,6 +88,12 @@ All list tools auto-paginate with `max_results` cap (default 50, max 500). DRF `
 
 For RAG use cases prefer `get_document_content` (OCR text) or `answer_from_documents` (search + excerpts) — model can read text directly, no PDF byte parsing needed.
 
+## HTTP / Docker
+
+Set `MCP_TRANSPORT=http` to expose the server over streamable HTTP (defaults: `0.0.0.0:8000/mcp`, stateless).
+
+HTTP transport refuses to start without `MCP_AUTH_TOKEN`. Set it to a long random string; clients send `Authorization: Bearer <token>`.
+
 ## Dev
 
 ```bash
