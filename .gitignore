@@ -8,3 +8,14 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Secrets
+.env
+
+# Claude Code local state
+.claude/
+
+# Tool caches
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
