@@ -94,6 +94,8 @@ Set `MCP_TRANSPORT=http` to expose the server over streamable HTTP (defaults: `0
 
 HTTP transport refuses to start without `MCP_AUTH_TOKEN`. Set it to a long random string; clients send `Authorization: Bearer <token>`.
 
+By default `MCP_STATELESS=true` — each request stands alone, no MCP session continuity. Set `MCP_STATELESS=false` only if your client maintains a streamable HTTP session and relies on per-session state (most don't).
+
 ## Dev
 
 ```bash
