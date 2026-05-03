@@ -6,6 +6,7 @@ import json
 
 import pytest
 from fastmcp import Client
+from fastmcp.exceptions import ToolError
 
 from .conftest import FakeClient
 
@@ -111,11 +112,13 @@ async def test_download_document_too_large(
     mcp_client: Client, fake_client: FakeClient
 ) -> None:
     fake_client.set_binary("/api/documents/1/download/", b"x" * 5000)
-    result = await mcp_client.call_tool(
-        "download_document", {"document_id": 1, "max_inline_bytes": 1024}
-    )
-    assert "error" in result.data
-    assert result.data["bytes"] == 5000
+    with pytest.raises(ToolError) as excinfo:
+        await mcp_client.call_tool(
+            "download_document", {"document_id": 1, "max_inline_bytes": 1024}
+        )
+    msg = str(excinfo.value)
+    assert "5000" in msg
+    assert "save_to_path" in msg
 
 
 async def test_download_document_save_to_path(
@@ -154,24 +157,24 @@ async def test_download_document_rejects_traversal(
     monkeypatch.setattr(docs_mod, "settings", new_settings)
 
     fake_client.set_binary("/api/documents/1/download/", b"x")
-    result = await mcp_client.call_tool(
-        "download_document",
-        {"document_id": 1, "save_to_path": "../escape.pdf"},
-    )
-    assert "error" in result.data
-    assert "outside" in result.data["error"].lower()
+    with pytest.raises(ToolError) as excinfo:
+        await mcp_client.call_tool(
+            "download_document",
+            {"document_id": 1, "save_to_path": "../escape.pdf"},
+        )
+    assert "outside" in str(excinfo.value).lower()
 
 
 async def test_download_document_save_disabled_without_root(
     mcp_client: Client, fake_client: FakeClient
 ) -> None:
     fake_client.set_binary("/api/documents/1/download/", b"x")
-    result = await mcp_client.call_tool(
-        "download_document",
-        {"document_id": 1, "save_to_path": "/tmp/x.pdf"},
-    )
-    assert "error" in result.data
-    assert "PAPERLESS_DOWNLOAD_DIR" in result.data["error"]
+    with pytest.raises(ToolError) as excinfo:
+        await mcp_client.call_tool(
+            "download_document",
+            {"document_id": 1, "save_to_path": "/tmp/x.pdf"},
+        )
+    assert "PAPERLESS_DOWNLOAD_DIR" in str(excinfo.value)
 
 
 async def test_get_next_asn(mcp_client: Client, fake_client: FakeClient) -> None:

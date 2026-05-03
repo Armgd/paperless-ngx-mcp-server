@@ -5,10 +5,10 @@ from typing import Annotated, Any
 
 from pydantic import Field
 
-from ..app import client, mcp
+from ..app import READ_ONLY, client, mcp
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def search_documents(
     query: Annotated[str, Field(description="Full-text query (Whoosh syntax supported)")],
     db_only: Annotated[bool, Field(description="Skip Whoosh index, DB-only search")] = False,
@@ -27,7 +27,7 @@ async def search_documents(
     }
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def search_autocomplete(
     term: Annotated[str, Field(description="Prefix term")],
     limit: Annotated[int, Field(ge=1, le=50)] = 10,

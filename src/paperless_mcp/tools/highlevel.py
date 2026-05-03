@@ -12,12 +12,13 @@ from typing import Annotated, Any, cast
 from fastmcp import Context
 from pydantic import Field
 
-from ..app import client, mcp
+from ..app import READ_ONLY, client, mcp
+from ..client import PaperlessAPIError
 from ._filters import FilterRequest, build_document_filters
 from ._helpers import slim_document
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def find_documents(
     correspondent_name: Annotated[str | None, Field(description="Correspondent name (resolved to id)")] = None,
     document_type_name: Annotated[str | None, Field(description="Doc type name (resolved to id)")] = None,
@@ -62,7 +63,7 @@ async def find_documents(
     }
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def answer_from_documents(
     query: Annotated[str, Field(description="Natural-language question or full-text query")],
     top_k: Annotated[int, Field(ge=1, le=20)] = 5,
@@ -84,7 +85,7 @@ async def answer_from_documents(
             return hit
         try:
             doc = await client.get(f"/api/documents/{doc_id}/")
-        except Exception as e:  # noqa: BLE001
+        except PaperlessAPIError as e:
             return {**hit, "fetch_error": str(e)}
         content = (doc.get("content") or "")[:excerpt_chars]
         return {
@@ -120,7 +121,7 @@ class _FilterForm:
     created_before: str = ""
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def interactive_search(
     ctx: Context,
     max_results: Annotated[int, Field(ge=1, le=200)] = 25,
@@ -217,7 +218,7 @@ async def interactive_search(
     }
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def recent_documents(
     days: Annotated[int, Field(ge=1, le=3650, description="Look back window in days")] = 30,
     limit: Annotated[int, Field(ge=1, le=200)] = 20,

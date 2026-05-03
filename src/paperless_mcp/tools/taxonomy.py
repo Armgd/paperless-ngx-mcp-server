@@ -5,7 +5,7 @@ from typing import Annotated, Any
 
 from pydantic import Field
 
-from ..app import client, mcp
+from ..app import READ_ONLY, client, mcp
 
 
 def _slim_taxonomy(item: dict[str, Any]) -> dict[str, Any]:
@@ -16,7 +16,7 @@ def _slim_taxonomy(item: dict[str, Any]) -> dict[str, Any]:
 
 # --- Tags ---
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def list_tags(
     name_contains: Annotated[str | None, Field(description="Filter name icontains")] = None,
     max_results: Annotated[int, Field(ge=1, le=1000)] = 200,
@@ -27,7 +27,7 @@ async def list_tags(
     return [_slim_taxonomy(i) for i in items]
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def get_tag(tag_id: Annotated[int, Field(description="Tag id")]) -> dict[str, Any]:
     """Fetch a single tag."""
     return await client.get(f"/api/tags/{tag_id}/")
@@ -35,7 +35,7 @@ async def get_tag(tag_id: Annotated[int, Field(description="Tag id")]) -> dict[s
 
 # --- Correspondents ---
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def list_correspondents(
     name_contains: Annotated[str | None, Field(description="Filter name icontains")] = None,
     max_results: Annotated[int, Field(ge=1, le=1000)] = 200,
@@ -46,7 +46,7 @@ async def list_correspondents(
     return [_slim_taxonomy(i) for i in items]
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def get_correspondent(
     correspondent_id: Annotated[int, Field(description="Correspondent id")],
 ) -> dict[str, Any]:
@@ -56,7 +56,7 @@ async def get_correspondent(
 
 # --- Document Types ---
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def list_document_types(
     name_contains: Annotated[str | None, Field(description="Filter name icontains")] = None,
     max_results: Annotated[int, Field(ge=1, le=1000)] = 200,
@@ -67,7 +67,7 @@ async def list_document_types(
     return [_slim_taxonomy(i) for i in items]
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def get_document_type(
     document_type_id: Annotated[int, Field(description="Document type id")],
 ) -> dict[str, Any]:
@@ -77,7 +77,7 @@ async def get_document_type(
 
 # --- Storage Paths ---
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def list_storage_paths(
     max_results: Annotated[int, Field(ge=1, le=1000)] = 200,
 ) -> list[dict[str, Any]]:
@@ -88,7 +88,7 @@ async def list_storage_paths(
 
 # --- Custom Fields ---
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def list_custom_fields(
     max_results: Annotated[int, Field(ge=1, le=1000)] = 200,
 ) -> list[dict[str, Any]]:
@@ -99,7 +99,7 @@ async def list_custom_fields(
 
 # --- Saved Views ---
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def list_saved_views(
     max_results: Annotated[int, Field(ge=1, le=1000)] = 200,
 ) -> list[dict[str, Any]]:
@@ -107,7 +107,7 @@ async def list_saved_views(
     return await client.paginate("/api/saved_views/", max_items=max_results)
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def get_saved_view(
     saved_view_id: Annotated[int, Field(description="Saved view id")],
 ) -> dict[str, Any]:

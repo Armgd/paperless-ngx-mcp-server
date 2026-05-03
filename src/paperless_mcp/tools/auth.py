@@ -3,11 +3,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..app import client, mcp, settings
+from ..app import READ_ONLY, client, mcp, settings
 from ..client import PaperlessAPIError
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def verify_auth() -> dict[str, Any]:
     """Verify Paperless credentials by fetching the current user profile.
 

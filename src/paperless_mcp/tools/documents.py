@@ -4,16 +4,15 @@ from __future__ import annotations
 import base64
 from typing import Annotated, Any
 
+from fastmcp.exceptions import ToolError
 from pydantic import Field
 
-from ..app import client, mcp, settings
+from ..app import READ_ONLY, client, mcp, settings
 from ._helpers import slim_document
 from ._safe_path import UnsafePathError, sanitize_save_path
 
 
-@mcp.tool(
-    annotations={"readOnlyHint": True, "openWorldHint": True},
-)
+@mcp.tool(annotations=READ_ONLY)
 async def list_documents(
     correspondent_id: Annotated[int | None, Field(description="Filter by correspondent id")] = None,
     document_type_id: Annotated[int | None, Field(description="Filter by doc type id")] = None,
@@ -70,7 +69,7 @@ async def list_documents(
     return {"count": len(docs), "documents": [slim_document(d) for d in docs]}
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def get_document(
     document_id: Annotated[int, Field(description="Document id")],
 ) -> dict[str, Any]:
@@ -80,7 +79,7 @@ async def get_document(
     return doc
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def get_document_content(
     document_id: Annotated[int, Field(description="Document id")],
     max_chars: Annotated[int, Field(ge=100, le=200_000, description="Truncate OCR text")] = 50_000,
@@ -102,7 +101,7 @@ async def get_document_content(
     }
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def get_document_metadata(
     document_id: Annotated[int, Field(description="Document id")],
 ) -> dict[str, Any]:
@@ -110,7 +109,7 @@ async def get_document_metadata(
     return await client.get(f"/api/documents/{document_id}/metadata/")
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def get_document_notes(
     document_id: Annotated[int, Field(description="Document id")],
 ) -> list[dict[str, Any]]:
@@ -118,7 +117,7 @@ async def get_document_notes(
     return await client.get(f"/api/documents/{document_id}/notes/")
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def get_document_suggestions(
     document_id: Annotated[int, Field(description="Document id")],
 ) -> dict[str, Any]:
@@ -126,7 +125,7 @@ async def get_document_suggestions(
     return await client.get(f"/api/documents/{document_id}/suggestions/")
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def get_document_history(
     document_id: Annotated[int, Field(description="Document id")],
 ) -> Any:
@@ -134,7 +133,7 @@ async def get_document_history(
     return await client.get(f"/api/documents/{document_id}/history/")
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def download_document(
     document_id: Annotated[int, Field(description="Document id")],
     original: Annotated[bool, Field(description="Download original (not archived PDF)")] = False,
@@ -155,16 +154,15 @@ async def download_document(
         try:
             path = sanitize_save_path(save_to_path, root=settings.download_dir)
         except UnsafePathError as exc:
-            return {"error": str(exc)}
+            raise ToolError(str(exc)) from exc
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(blob)
         return {"saved_to": str(path), "bytes": size}
     if size > max_inline_bytes:
-        return {
-            "error": "file too large for inline base64",
-            "bytes": size,
-            "hint": "set save_to_path to write to disk",
-        }
+        raise ToolError(
+            f"file too large for inline base64 ({size} bytes); "
+            "set save_to_path to write to disk"
+        )
     return {
         "encoding": "base64",
         "bytes": size,
@@ -172,7 +170,7 @@ async def download_document(
     }
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def get_document_thumbnail(
     document_id: Annotated[int, Field(description="Document id")],
 ) -> dict[str, Any]:
@@ -189,7 +187,7 @@ async def get_document_thumbnail(
     }
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def get_document_preview(
     document_id: Annotated[int, Field(description="Document id")],
     save_to_path: Annotated[str | None, Field(description="Write to disk instead of b64")] = None,
@@ -201,16 +199,15 @@ async def get_document_preview(
         try:
             path = sanitize_save_path(save_to_path, root=settings.download_dir)
         except UnsafePathError as exc:
-            return {"error": str(exc)}
+            raise ToolError(str(exc)) from exc
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(blob)
         return {"saved_to": str(path), "bytes": len(blob)}
     if len(blob) > max_inline_bytes:
-        return {
-            "error": "preview too large for inline base64",
-            "bytes": len(blob),
-            "hint": "set save_to_path",
-        }
+        raise ToolError(
+            f"preview too large for inline base64 ({len(blob)} bytes); "
+            "set save_to_path"
+        )
     return {
         "encoding": "base64",
         "bytes": len(blob),
@@ -218,7 +215,7 @@ async def get_document_preview(
     }
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def get_next_asn() -> dict[str, Any]:
     """Get the next available archive serial number."""
     val = await client.get("/api/documents/next_asn/")

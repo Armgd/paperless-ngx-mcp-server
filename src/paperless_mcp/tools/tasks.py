@@ -5,10 +5,10 @@ from typing import Annotated, Any
 
 from pydantic import Field
 
-from ..app import client, mcp
+from ..app import READ_ONLY, client, mcp
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations=READ_ONLY)
 async def list_tasks(
     max_results: Annotated[int, Field(ge=1, le=500)] = 100,
 ) -> list[dict[str, Any]]:

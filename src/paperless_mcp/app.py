@@ -2,14 +2,24 @@
 from __future__ import annotations
 
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastmcp import FastMCP
 from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
+from mcp.types import ToolAnnotations
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from .client import PaperlessClient
 from .config import Settings
+
+
+READ_ONLY = ToolAnnotations(
+    readOnlyHint=True,
+    idempotentHint=True,
+    openWorldHint=True,
+)
 
 
 def _build_auth() -> StaticTokenVerifier | None:
@@ -25,7 +35,22 @@ def _build_auth() -> StaticTokenVerifier | None:
 
 settings = Settings.from_env()
 client = PaperlessClient(settings)
-mcp: FastMCP = FastMCP(name="paperless-ngx", auth=_build_auth())
+
+
+@asynccontextmanager
+async def _lifespan(_: FastMCP) -> AsyncIterator[None]:
+    """Close the shared httpx client on server shutdown."""
+    try:
+        yield
+    finally:
+        aclose = getattr(client, "aclose", None)
+        if aclose is not None:
+            await aclose()
+
+
+mcp: FastMCP = FastMCP(
+    name="paperless-ngx", auth=_build_auth(), lifespan=_lifespan
+)
 
 
 @mcp.custom_route("/health", methods=["GET"])
