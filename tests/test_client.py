@@ -123,3 +123,21 @@ async def test_request_strips_none_params() -> None:
     assert "b" not in captured["params"]
     assert captured["params"]["a"] == "1"
     await c.aclose()
+
+
+async def test_request_expect_headers_returns_tuple() -> None:
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, content=b"PNGDATA", headers={"content-type": "image/png"}
+        )
+
+    c = _make_client(handler)
+    body, headers = await c.request(
+        "GET",
+        "/api/documents/1/thumb/",
+        expect_binary=True,
+        expect_headers=True,
+    )
+    assert body == b"PNGDATA"
+    assert headers["content-type"] == "image/png"
+    await c.aclose()

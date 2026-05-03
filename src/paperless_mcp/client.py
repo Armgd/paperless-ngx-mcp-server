@@ -40,19 +40,22 @@ class PaperlessClient:
         params: dict[str, Any] | None = None,
         json: Any = None,
         expect_binary: bool = False,
+        expect_headers: bool = False,
     ) -> Any:
         clean = {k: v for k, v in (params or {}).items() if v is not None}
         resp = await self._client.request(method, path, params=clean, json=json)
         if resp.status_code >= 400:
             raise PaperlessAPIError(resp.status_code, resp.text, method, path)
         if resp.status_code == 204 or not resp.content:
-            return None
-        if expect_binary:
-            return resp.content
-        ctype = resp.headers.get("content-type", "")
-        if "application/json" in ctype:
-            return resp.json()
-        return resp.content
+            body: Any = None
+        elif expect_binary:
+            body = resp.content
+        else:
+            ctype = resp.headers.get("content-type", "")
+            body = resp.json() if "application/json" in ctype else resp.content
+        if expect_headers:
+            return body, dict(resp.headers)
+        return body
 
     async def get(self, path: str, **kw: Any) -> Any:
         return await self.request("GET", path, **kw)
@@ -63,11 +66,9 @@ class PaperlessClient:
     async def get_binary_with_headers(
         self, path: str, **kw: Any
     ) -> tuple[bytes, dict[str, str]]:
-        clean = {k: v for k, v in (kw.get("params") or {}).items() if v is not None}
-        resp = await self._client.request("GET", path, params=clean)
-        if resp.status_code >= 400:
-            raise PaperlessAPIError(resp.status_code, resp.text, "GET", path)
-        return resp.content, dict(resp.headers)
+        return await self.request(
+            "GET", path, expect_binary=True, expect_headers=True, **kw
+        )
 
     async def post(self, path: str, **kw: Any) -> Any:
         return await self.request("POST", path, **kw)
