@@ -13,6 +13,7 @@ dependencies = [
 
 [project.scripts]
 paperless-mcp = "paperless_mcp.server:main"
+paperless-mcp-healthcheck = "paperless_mcp.healthcheck:main"
 
 [build-system]
 requires = ["hatchling"]
