@@ -1,6 +1,37 @@
 # CHANGELOG
 
 
+## v0.1.1 (2026-05-03)
+
+### Bug Fixes
+
+- Align with FastMCP best practices
+  ([`a0e66ac`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/a0e66ac29ce3d2ee1b6d6ff34fe02908fa34a9b3))
+
+- close shared httpx client via FastMCP lifespan to stop resource leak - raise ToolError from
+  download_document/get_document_preview instead of returning {"error": ...} dicts so MCP error
+  contract is honored - centralize tool annotations as READ_ONLY (ToolAnnotations) with
+  idempotentHint=True; replace ad-hoc dicts across all tool modules - narrow except Exception ->
+  except PaperlessAPIError in highlevel._enrich - update test_documents.py to assert
+  pytest.raises(ToolError)
+
+### Code Style
+
+- **server**: Drop unused E402 noqa on tools import
+  ([`ac35fb0`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/ac35fb05eda4f4602c300532767e534b70014ba6))
+
+Block sits at module top with no preceding code, so E402 cannot fire.
+
+### Refactoring
+
+- **docker**: Extract healthcheck to paperless-mcp-healthcheck script
+  ([`5333f04`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/5333f0414eefeff4e7c4483c4d841cbfe7046b7b))
+
+Replace inline python -c probe in Dockerfile with a console script entry point. Drop redundant
+  healthcheck block from docker-compose (HEALTHCHECK in image is authoritative). Honors
+  MCP_HOST/MCP_PORT and rewrites 0.0.0.0 to loopback.
+
+
 ## v0.1.0 (2026-05-03)
 
 ### Bug Fixes
