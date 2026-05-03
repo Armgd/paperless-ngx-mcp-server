@@ -112,3 +112,35 @@ async def test_user_declines_strategy(
     result = await mcp_client.call_tool("interactive_search", {})
     assert result.data["status"] == "decline"
     assert result.data["step"] == "strategy"
+
+
+async def test_elicit_unsupported_raises_tool_error(
+    mcp_client: Client, fake_client: FakeClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from fastmcp.exceptions import ToolError
+    from mcp import McpError
+    from mcp.types import ErrorData
+
+    from paperless_mcp.app import mcp
+
+    tool = await mcp.get_tool("interactive_search")
+    original = tool.fn
+
+    class _NoElicitContext:
+        async def elicit(self, *_: object, **__: object) -> object:
+            raise McpError(
+                ErrorData(code=-32601, message="elicitation not supported")
+            )
+
+    async def wrapper(_injected_ctx: object = None, **kwargs: object) -> object:
+        return await original(_NoElicitContext(), **kwargs)
+
+    monkeypatch.setattr(tool, "fn", wrapper)
+
+    with pytest.raises(ToolError) as excinfo:
+        await mcp_client.call_tool("interactive_search", {})
+    msg = str(excinfo.value)
+    assert "elicit" in msg.lower()
+    assert "find_documents" in msg
+    assert "answer_from_documents" in msg
+    assert "recent_documents" in msg

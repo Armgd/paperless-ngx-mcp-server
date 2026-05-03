@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from typing import Annotated, Any, cast
 
 from fastmcp import Context
+from fastmcp.exceptions import ToolError
+from mcp import McpError
 from pydantic import Field
 
 from ..app import READ_ONLY, client, mcp
@@ -130,12 +132,19 @@ async def interactive_search(
 
     Use when user asks vague questions like "find my documents" without enough detail.
     Asks: which strategy (full-text / filters / recent), then gathers needed inputs.
-    Falls back to error dict if client doesn't support elicitation.
+    Raises `ToolError` naming alternative tools (`find_documents`, `answer_from_documents`,
+    `recent_documents`) if the client doesn't support MCP elicitation.
     """
-    strategy = await ctx.elicit(
-        "How do you want to search?",
-        response_type=["full_text", "filters", "recent"],  # type: ignore[arg-type]
-    )
+    try:
+        strategy = await ctx.elicit(
+            "How do you want to search?",
+            response_type=["full_text", "filters", "recent"],  # type: ignore[arg-type]
+        )
+    except (McpError, NotImplementedError, RuntimeError) as exc:
+        raise ToolError(
+            "interactive_search requires a client that supports MCP elicitation. "
+            "Use find_documents, answer_from_documents, or recent_documents instead."
+        ) from exc
     if strategy.action != "accept":
         return {"status": strategy.action, "step": "strategy"}
     strategy_value = str(strategy.data)
