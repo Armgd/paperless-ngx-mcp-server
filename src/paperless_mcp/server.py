@@ -1,4 +1,5 @@
 """FastMCP server entrypoint."""
+
 from __future__ import annotations
 
 import os
@@ -7,7 +8,7 @@ from ._envutil import env_bool
 from .app import mcp
 
 # Register tools by importing modules (decorator side-effect).
-from .tools import (  # noqa: F401, E402
+from .tools import (  # noqa: F401
     auth,
     documents,
     highlevel,
