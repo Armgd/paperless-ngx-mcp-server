@@ -46,3 +46,4 @@ FastMCP server exposing read-only tools over Paperless-ngx REST API.
 - Tool modules register via decorator import side-effect — keep `server.py` import list in sync.
 - All list endpoints flow through `client.paginate()`; never re-implement DRF cursor walking in tool code.
 - Name-based UX (`find_documents`) resolves via `_helpers.resolve_name_to_id`; keep id-based primitives in `documents.py` and name-resolving wrappers in `highlevel.py`.
+- `Settings.from_env()` runs at import of `paperless_mcp.app` (transitively via `paperless_mcp.config`). Tests must set `PAPERLESS_URL` and `PAPERLESS_TOKEN` *before* importing any project module — see `tests/conftest.py:8-9`.
