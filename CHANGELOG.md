@@ -1,6 +1,9 @@
 # CHANGELOG
 
 
+## v0.1.2 (2026-05-03)
+
+
 ## v0.1.1 (2026-05-03)
 
 ### Bug Fixes
@@ -15,6 +18,9 @@
   except PaperlessAPIError in highlevel._enrich - update test_documents.py to assert
   pytest.raises(ToolError)
 
+- **highlevel**: Raise ToolError when client does not support elicitation
+  ([`19ec695`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/19ec69504dab2813cb7391a0ca606bd2d33d8db6))
+
 ### Code Style
 
 - **server**: Drop unused E402 noqa on tools import
@@ -22,7 +28,18 @@
 
 Block sits at module top with no preceding code, so E402 cannot fire.
 
+### Documentation
+
+- **claude**: Note Settings.from_env() runs at import time
+  ([`50985b0`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/50985b07a7380065dec56ef29e143d144dbf3a9d))
+
+- **readme**: Document MCP_STATELESS env var default
+  ([`47ef09f`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/47ef09f14ecc619537f74d5d7bea83c2b9622212))
+
 ### Refactoring
+
+- **client**: Fold get_binary_with_headers into request(expect_headers=True)
+  ([`0fb8c99`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/0fb8c99d5f0d46170803649c34cc2d47740ad3c0))
 
 - **docker**: Extract healthcheck to paperless-mcp-healthcheck script
   ([`5333f04`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/5333f0414eefeff4e7c4483c4d841cbfe7046b7b))
