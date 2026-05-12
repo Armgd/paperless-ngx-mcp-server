@@ -1,4 +1,4 @@
-"""interactive_search tool — mocks Context.elicit to drive each branch."""
+"""paperless_interactive_search tool — mocks Context.elicit to drive each branch."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -33,7 +33,7 @@ async def patch_elicit(monkeypatch: pytest.MonkeyPatch):
     """Replace registered interactive_search's fn to bypass FastMCP context injection."""
     from paperless_mcp.app import mcp
 
-    tool = await mcp.get_tool("interactive_search")
+    tool = await mcp.get_tool("paperless_interactive_search")
     original = tool.fn
 
     def install(script: list[_ElicitResult]) -> _ScriptedContext:
@@ -60,10 +60,10 @@ async def test_full_text_branch(
     fake_client.set_get(
         "/api/search/", {"count": 1, "results": [{"id": 1, "score": 0.9}]}
     )
-    result = await mcp_client.call_tool("interactive_search", {})
-    assert result.data["strategy"] == "full_text"
-    assert result.data["query"] == "rent"
-    assert result.data["count"] == 1
+    result = await mcp_client.call_tool("paperless_interactive_search", {})
+    assert result.structured_content["strategy"] == "full_text"
+    assert result.structured_content["query"] == "rent"
+    assert result.structured_content["count"] == 1
 
 
 async def test_recent_branch(
@@ -76,9 +76,9 @@ async def test_recent_branch(
         ]
     )
     fake_client.set_paginate("/api/documents/", [{"id": 9, "title": "x"}])
-    result = await mcp_client.call_tool("interactive_search", {})
-    assert result.data["strategy"] == "recent"
-    assert result.data["count"] == 1
+    result = await mcp_client.call_tool("paperless_interactive_search", {})
+    assert result.structured_content["strategy"] == "recent"
+    assert result.structured_content["page_info"]["returned"] == 1
 
 
 async def test_filters_branch(
@@ -99,19 +99,19 @@ async def test_filters_branch(
         "/api/correspondents/", {"results": [{"id": 7, "name": "Acme"}]}
     )
     fake_client.set_paginate("/api/documents/", [])
-    result = await mcp_client.call_tool("interactive_search", {})
-    assert result.data["strategy"] == "filters"
-    assert result.data["filters_applied"]["correspondent__id"] == 7
-    assert result.data["filters_applied"]["title__icontains"] == "bill"
+    result = await mcp_client.call_tool("paperless_interactive_search", {})
+    assert result.structured_content["strategy"] == "filters"
+    assert result.structured_content["filters_applied"]["correspondent__id"] == 7
+    assert result.structured_content["filters_applied"]["title__icontains"] == "bill"
 
 
 async def test_user_declines_strategy(
     mcp_client: Client, fake_client: FakeClient, patch_elicit: Any
 ) -> None:
     patch_elicit([_ElicitResult("decline")])
-    result = await mcp_client.call_tool("interactive_search", {})
-    assert result.data["status"] == "decline"
-    assert result.data["step"] == "strategy"
+    result = await mcp_client.call_tool("paperless_interactive_search", {})
+    assert result.structured_content["status"] == "decline"
+    assert result.structured_content["step"] == "strategy"
 
 
 async def test_elicit_unsupported_raises_tool_error(
@@ -123,7 +123,7 @@ async def test_elicit_unsupported_raises_tool_error(
 
     from paperless_mcp.app import mcp
 
-    tool = await mcp.get_tool("interactive_search")
+    tool = await mcp.get_tool("paperless_interactive_search")
     original = tool.fn
 
     class _NoElicitContext:
@@ -138,9 +138,9 @@ async def test_elicit_unsupported_raises_tool_error(
     monkeypatch.setattr(tool, "fn", wrapper)
 
     with pytest.raises(ToolError) as excinfo:
-        await mcp_client.call_tool("interactive_search", {})
+        await mcp_client.call_tool("paperless_interactive_search", {})
     msg = str(excinfo.value)
     assert "elicit" in msg.lower()
-    assert "find_documents" in msg
-    assert "answer_from_documents" in msg
-    assert "recent_documents" in msg
+    assert "paperless_find_documents" in msg
+    assert "paperless_answer_from_documents" in msg
+    assert "paperless_recent_documents" in msg
