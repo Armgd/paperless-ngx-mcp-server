@@ -1,7 +1,184 @@
 # CHANGELOG
 
 
+## v0.2.0 (2026-05-12)
+
+### Chores
+
+- Sync uv.lock to v0.1.2 after merge
+  ([`012441c`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/012441c3d192c5448102887f605e0eb8c755554e))
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+
 ## v0.1.2 (2026-05-03)
+
+### Chores
+
+- Sync uv.lock to v0.1.1
+  ([`e6c9489`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/e6c94899f452932a5eb456f8add6cf22ef167e97))
+
+The release commit bumped pyproject but missed regenerating the lockfile.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+### Documentation
+
+- Document resources, Context, progress and logging
+  ([`b3151cf`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/b3151cf445926db89d890f780746a0d2cdc18cbd))
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+- **plans**: Add superpowers planning docs
+  ([`32df22a`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/32df22aa8419b350d588aa164c557efd48b08208))
+
+Archives the implementation plans driven through the subagent-driven-development workflow: the
+  FastMCP r1 (hardening) and r2 (typed responses) follow-ups, the earlier code-review-corrections
+  plan, and the most recent MCP advanced-features plan (resources + Context observability).
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+### Features
+
+- **client**: Paginate accepts optional progress_cb
+  ([`6dbcc13`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/6dbcc1318c2afca834d68863d8bc2490e9a7972e))
+
+Adds an optional `progress_cb: Callable[[int, int | None], Awaitable[None]]` keyword argument to
+  `PaperlessClient.paginate` (and mirrors it in `FakeClient`). The callback is awaited after each
+  page with (items_so_far, total_or_None), covering both paginated and plain-list paths including
+  truncation via max_items.
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+- **helpers**: Add slim_metadata helper
+  ([`f02060a`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/f02060a024aaf84e692e9ff13f150e2e0728cb8e))
+
+Trims verbose document metadata records: drops the large original_metadata / archive_metadata arrays
+  while keeping checksum, size, filenames, lang, page_count, and similar small fields. Used by
+  paperless_get_document_metadata.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- **resources**: Add paperless://documents/{id}/content resource template
+  ([`771bb29`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/771bb29a4b49f96c533f653b0d98118ae91a5c63))
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+- **resources**: Add paperless://documents/{id}/metadata resource template
+  ([`baafc3a`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/baafc3aa98afc1b0327ad1be1ee9145d0ce197aa))
+
+- **resources**: Add preview/thumbnail/download binary resource templates
+  ([`7be8d63`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/7be8d6388efbddc66f0dc11dce32a2f6b60d207c))
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+- **schemas**: Add TypedDict output shapes module
+  ([`630617a`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/630617abcee52ec7d0572640a4b264e8a7c8ff9e))
+
+Defines PageInfo, DocumentListResponse, TaxonomyListResponse, TaskListResponse, SearchResponse,
+  AuthResult, AnswerResponse, and related shapes used by tool return types to drive FastMCP
+  outputSchema advertisement. Includes the `make_page_info` helper that flattens (returned, total,
+  has_more) into the PageInfo wire shape with capped_by_max_results derived consistently.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- **server**: Add origin allowlist ASGI middleware
+  ([`2c7e7e5`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/2c7e7e5c52f473b5f55524b2d27f40e32c94c90a))
+
+OriginAllowlistMiddleware rejects HTTP requests whose Origin header is not in the configured
+  allowlist, blocking DNS-rebinding and cross-site abuse of an HTTP-transported MCP server.
+  parse_allowed_origins parses the MCP_ALLOWED_ORIGINS env var (comma-separated). Wired in server.py
+  only when the variable is set, so stdio transport and local-only HTTP deployments are unaffected.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- **tools**: Highlevel tools emit progress + structured logging via Context
+  ([`4a3c438`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/4a3c438564e0238b63d64e3bf4bc9f0ad2b9619d))
+
+Wire ctx: Context into paperless_find_documents, paperless_answer_from_documents, and
+  paperless_recent_documents — progress callbacks, debug/info/warning logs. Switch
+  answer_from_documents from asyncio.gather to sequential enrichment for monotonic progress; remove
+  now-unused asyncio import.
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+- **tools**: List_documents emits progress + structured logging via Context
+  ([`d156c56`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/d156c5616535159c7dc64ad21c065d655b514f66))
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+### Refactoring
+
+- **auth**: Paperless_ prefix + typed AuthResult, redact upstream body
+  ([`ba0e407`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/ba0e40766b37b472deb6949a22443d3d2ed72686))
+
+Renames verify_auth -> paperless_verify_auth and returns the AuthResult TypedDict so FastMCP
+  advertises an outputSchema. The failure branch no longer echoes the upstream error string to the
+  client — only the HTTP status code and the configured base_url leave the server. The full upstream
+  body is still recorded on the PaperlessAPIError instance and logged server-side.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- **search**: Paperless_ prefix + typed SearchResponse
+  ([`236bb2a`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/236bb2a4ca7417d760007f3b5d24378232a9f6ca))
+
+Renames search_documents and search_autocomplete to paperless_* and switches search_documents to
+  return the SearchResponse TypedDict (query, count, results) so FastMCP can publish an
+  outputSchema. Tests read structured_content since the response now carries a schema-bound payload.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- **stats**: Paperless_ prefix on statistics tools
+  ([`6af36a7`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/6af36a7882cf85beedd24be3fd33a26c3c99977a))
+
+Renames get_statistics, get_status, and get_remote_version to their paperless_ -prefixed
+  counterparts so the entire tool surface is namespaced consistently when multiple MCP servers are
+  loaded in the same client.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- **tasks**: Paperless_ prefix + typed TaskListResponse with page_info
+  ([`a2c67e3`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/a2c67e3175e988551b760d9264cadd9ddf683ace))
+
+Renames list_tasks -> paperless_list_tasks and returns TaskListResponse with a page_info envelope.
+  /api/tasks/ may respond as either a plain list or a DRF dict; both shapes are normalized to
+  (tasks, page_info) so callers can detect truncation via has_more / capped_by_max_results without
+  inspecting the upstream payload.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- **taxonomy**: Paperless_ prefix + typed responses with page_info
+  ([`90dff7a`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/90dff7ab07fa7216da0ad59b53ad0064402e5d2a))
+
+Renames the eleven taxonomy tools (tags, correspondents, document types, storage paths, custom
+  fields, saved views) to their paperless_ -prefixed counterparts and switches list endpoints to
+  TaxonomyListResponse with the shared page_info envelope. Adds _list_response helper to keep the
+  slim_taxonomy + page_info packaging in one place.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+### Testing
+
+- **interactive_search**: Align with paperless_ prefix and structured_content
+  ([`cd3e4cc`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/cd3e4cc7782d863082aeba0a755778d1a785ced8))
+
+Updates the four-branch elicitation suite to call paperless_interactive_search and read
+  result.structured_content. The unsupported-elicit assertions also match the renamed
+  paperless_find_documents / answer_from_documents / recent_documents that the tool's error message
+  now points clients at.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- **server**: Paperless_ prefix audit and HTTP transport hardening
+  ([`2147929`](https://github.com/Armgd/paperless-ngx-mcp-server/commit/2147929884d34bcb077147c39c1baa4cd7ae89c1))
+
+Updates the core-tools expected set to the paperless_ -prefixed names and adds
+  test_all_tools_are_prefixed so any future tool that forgets the prefix fails fast. Adds two
+  HTTP-transport assertions: the server binds 127.0.0.1 by default (no LAN exposure without an
+  explicit MCP_HOST), and the origin allowlist middleware is wired exactly once when
+  MCP_ALLOWED_ORIGINS is set.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 
 
 ## v0.1.1 (2026-05-03)
