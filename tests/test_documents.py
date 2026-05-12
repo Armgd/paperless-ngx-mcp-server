@@ -32,14 +32,36 @@ async def test_list_documents_slims_payload(
     fake_client.set_paginate(
         "/api/documents/", [_doc(1), _doc(2, title="Other")]
     )
-    result = await mcp_client.call_tool("list_documents", {"max_results": 50})
-    assert result.data["count"] == 2
-    docs = result.data["documents"]
+    result = await mcp_client.call_tool(
+        "paperless_list_documents", {"max_results": 50}
+    )
+    docs = result.structured_content["documents"]
     assert {d["id"] for d in docs} == {1, 2}
     # slimmed: no content, no permissions
     for d in docs:
         assert "content" not in d
         assert "permissions" not in d
+    info = result.structured_content["page_info"]
+    assert info["returned"] == 2
+    assert info["total"] == 2
+    assert info["has_more"] is False
+    assert info["capped_by_max_results"] is False
+
+
+async def test_list_documents_has_more_when_capped(
+    mcp_client: Client, fake_client: FakeClient
+) -> None:
+    fake_client.set_paginate(
+        "/api/documents/", [_doc(i) for i in range(1, 11)]
+    )
+    result = await mcp_client.call_tool(
+        "paperless_list_documents", {"max_results": 5}
+    )
+    info = result.structured_content["page_info"]
+    assert info["returned"] == 5
+    assert info["total"] == 10
+    assert info["has_more"] is True
+    assert info["capped_by_max_results"] is True
 
 
 async def test_list_documents_passes_filters(
@@ -47,7 +69,7 @@ async def test_list_documents_passes_filters(
 ) -> None:
     fake_client.set_paginate("/api/documents/", [])
     await mcp_client.call_tool(
-        "list_documents",
+        "paperless_list_documents",
         {
             "correspondent_id": 5,
             "tag_ids_all": [1, 2],
@@ -69,9 +91,11 @@ async def test_get_document_strips_content(
     mcp_client: Client, fake_client: FakeClient
 ) -> None:
     fake_client.set_get("/api/documents/42/", _doc(42, content="huge ocr"))
-    result = await mcp_client.call_tool("get_document", {"document_id": 42})
-    assert result.data["id"] == 42
-    assert "content" not in result.data
+    result = await mcp_client.call_tool(
+        "paperless_get_document", {"document_id": 42}
+    )
+    assert result.structured_content["id"] == 42
+    assert "content" not in result.structured_content
 
 
 async def test_get_document_content_truncates(
@@ -80,11 +104,11 @@ async def test_get_document_content_truncates(
     big = "x" * 1000
     fake_client.set_get("/api/documents/9/", _doc(9, content=big))
     result = await mcp_client.call_tool(
-        "get_document_content", {"document_id": 9, "max_chars": 100}
+        "paperless_get_document_content", {"document_id": 9, "max_chars": 100}
     )
-    assert result.data["content_truncated"] is True
-    assert result.data["content_total_chars"] == 1000
-    assert len(result.data["content"]) == 100
+    assert result.structured_content["content_truncated"] is True
+    assert result.structured_content["content_total_chars"] == 1000
+    assert len(result.structured_content["content"]) == 100
 
 
 async def test_get_document_content_no_truncation(
@@ -92,10 +116,10 @@ async def test_get_document_content_no_truncation(
 ) -> None:
     fake_client.set_get("/api/documents/3/", _doc(3, content="short"))
     result = await mcp_client.call_tool(
-        "get_document_content", {"document_id": 3, "max_chars": 1000}
+        "paperless_get_document_content", {"document_id": 3, "max_chars": 1000}
     )
-    assert result.data["content_truncated"] is False
-    assert result.data["content"] == "short"
+    assert result.structured_content["content_truncated"] is False
+    assert result.structured_content["content"] == "short"
 
 
 async def test_download_document_inline_b64(
@@ -103,9 +127,12 @@ async def test_download_document_inline_b64(
 ) -> None:
     blob = b"PDFDATA"
     fake_client.set_binary("/api/documents/1/download/", blob)
-    result = await mcp_client.call_tool("download_document", {"document_id": 1})
-    assert result.data["bytes"] == len(blob)
-    assert base64.b64decode(result.data["data"]) == blob
+    result = await mcp_client.call_tool(
+        "paperless_download_document", {"document_id": 1}
+    )
+    payload = result.structured_content["result"]
+    assert payload["bytes"] == len(blob)
+    assert base64.b64decode(payload["data"]) == blob
 
 
 async def test_download_document_too_large(
@@ -114,7 +141,8 @@ async def test_download_document_too_large(
     fake_client.set_binary("/api/documents/1/download/", b"x" * 5000)
     with pytest.raises(ToolError) as excinfo:
         await mcp_client.call_tool(
-            "download_document", {"document_id": 1, "max_inline_bytes": 1024}
+            "paperless_download_document",
+            {"document_id": 1, "max_inline_bytes": 1024},
         )
     msg = str(excinfo.value)
     assert "5000" in msg
@@ -137,10 +165,10 @@ async def test_download_document_save_to_path(
     fake_client.set_binary("/api/documents/1/download/", blob)
     target = tmp_path / "out.pdf"
     result = await mcp_client.call_tool(
-        "download_document",
+        "paperless_download_document",
         {"document_id": 1, "save_to_path": str(target)},
     )
-    assert result.data["saved_to"] == str(target)
+    assert result.structured_content["result"]["saved_to"] == str(target)
     assert target.read_bytes() == blob
 
 
@@ -159,7 +187,7 @@ async def test_download_document_rejects_traversal(
     fake_client.set_binary("/api/documents/1/download/", b"x")
     with pytest.raises(ToolError) as excinfo:
         await mcp_client.call_tool(
-            "download_document",
+            "paperless_download_document",
             {"document_id": 1, "save_to_path": "../escape.pdf"},
         )
     assert "outside" in str(excinfo.value).lower()
@@ -171,7 +199,7 @@ async def test_download_document_save_disabled_without_root(
     fake_client.set_binary("/api/documents/1/download/", b"x")
     with pytest.raises(ToolError) as excinfo:
         await mcp_client.call_tool(
-            "download_document",
+            "paperless_download_document",
             {"document_id": 1, "save_to_path": "/tmp/x.pdf"},
         )
     assert "PAPERLESS_DOWNLOAD_DIR" in str(excinfo.value)
@@ -179,17 +207,16 @@ async def test_download_document_save_disabled_without_root(
 
 async def test_get_next_asn(mcp_client: Client, fake_client: FakeClient) -> None:
     fake_client.set_get("/api/documents/next_asn/", 42)
-    result = await mcp_client.call_tool("get_next_asn", {})
-    assert result.data["next_asn"] == 42
+    result = await mcp_client.call_tool("paperless_get_next_asn", {})
+    assert result.structured_content["next_asn"] == 42
 
 
 @pytest.mark.parametrize(
     "tool,path,payload",
     [
-        ("get_document_metadata", "/api/documents/1/metadata/", {"mime_type": "application/pdf"}),
-        ("get_document_notes", "/api/documents/1/notes/", [{"id": 1, "note": "hi"}]),
-        ("get_document_suggestions", "/api/documents/1/suggestions/", {"correspondents": [1]}),
-        ("get_document_history", "/api/documents/1/history/", [{"action": "create"}]),
+        ("paperless_get_document_notes", "/api/documents/1/notes/", [{"id": 1, "note": "hi"}]),
+        ("paperless_get_document_suggestions", "/api/documents/1/suggestions/", {"correspondents": [1]}),
+        ("paperless_get_document_history", "/api/documents/1/history/", [{"action": "create"}]),
     ],
 )
 async def test_passthrough_endpoints(
@@ -201,9 +228,53 @@ async def test_passthrough_endpoints(
 ) -> None:
     fake_client.set_get(path, payload)
     result = await mcp_client.call_tool(tool, {"document_id": 1})
-    # `get_document_history` returns Any (no schema) — data=None, fall back to text.
-    actual = result.data if result.data is not None else json.loads(result.content[0].text)
+    # FastMCP wraps list returns in {"result": [...]}; fall back to text content otherwise.
+    sc = result.structured_content
+    if isinstance(sc, dict) and set(sc.keys()) == {"result"}:
+        actual = sc["result"]
+    else:
+        actual = sc if sc is not None else json.loads(result.content[0].text)
     assert actual == payload
+
+
+async def test_metadata_slimmed_by_default(
+    mcp_client: Client, fake_client: FakeClient
+) -> None:
+    fake_client.set_get(
+        "/api/documents/1/metadata/",
+        {
+            "original_checksum": "abc",
+            "original_size": 1234,
+            "original_mime_type": "application/pdf",
+            "original_filename": "f.pdf",
+            "lang": "eng",
+            "original_metadata": [{"key": "x", "value": "y"}] * 50,
+            "archive_metadata": [{"key": "z"}] * 30,
+        },
+    )
+    result = await mcp_client.call_tool(
+        "paperless_get_document_metadata", {"document_id": 1}
+    )
+    assert result.structured_content["original_checksum"] == "abc"
+    assert "original_metadata" not in result.structured_content
+    assert "archive_metadata" not in result.structured_content
+
+
+async def test_metadata_include_raw(
+    mcp_client: Client, fake_client: FakeClient
+) -> None:
+    fake_client.set_get(
+        "/api/documents/1/metadata/",
+        {
+            "original_checksum": "abc",
+            "original_metadata": [{"key": "x"}],
+        },
+    )
+    result = await mcp_client.call_tool(
+        "paperless_get_document_metadata",
+        {"document_id": 1, "include_raw_metadata": True},
+    )
+    assert result.structured_content["original_metadata"] == [{"key": "x"}]
 
 
 async def test_thumbnail_uses_response_mime(
@@ -212,5 +283,51 @@ async def test_thumbnail_uses_response_mime(
     fake_client.set_binary_with_headers(
         "/api/documents/1/thumb/", b"PNGDATA", {"content-type": "image/png"}
     )
-    result = await mcp_client.call_tool("get_document_thumbnail", {"document_id": 1})
-    assert result.data["mime"] == "image/png"
+    result = await mcp_client.call_tool(
+        "paperless_get_document_thumbnail", {"document_id": 1}
+    )
+    assert result.structured_content["result"]["mime"] == "image/png"
+
+
+async def test_thumbnail_refuses_oversize_inline(
+    mcp_client: Client, fake_client: FakeClient
+) -> None:
+    fake_client.set_binary_with_headers(
+        "/api/documents/1/thumb/", b"x" * 5000, {"content-type": "image/png"}
+    )
+    with pytest.raises(ToolError) as excinfo:
+        await mcp_client.call_tool(
+            "paperless_get_document_thumbnail",
+            {"document_id": 1, "max_inline_bytes": 1024},
+        )
+    assert "5000" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_list_documents_emits_progress_and_log(
+    fake_client: FakeClient,
+) -> None:
+    fake_client.set_paginate(
+        "/api/documents/",
+        [{"id": i, "title": f"doc{i}"} for i in range(3)],
+    )
+    progress_events: list[tuple[float, float | None]] = []
+
+    async def on_progress(progress: float, total: float | None, message: str | None) -> None:
+        progress_events.append((progress, total))
+
+    log_events: list[tuple[str, str]] = []
+
+    async def on_log(message) -> None:
+        log_events.append((message.level, str(message.data)))
+
+    from paperless_mcp.app import mcp as server
+
+    async with Client(
+        server, progress_handler=on_progress, log_handler=on_log
+    ) as c:
+        result = await c.call_tool("paperless_list_documents", {"max_results": 50})
+
+    assert result.data.page_info.returned == 3
+    assert progress_events  # at least one progress update
+    assert any("documents" in msg.lower() for _, msg in log_events)
