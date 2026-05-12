@@ -1,4 +1,4 @@
-"""verify_auth tool."""
+"""paperless_verify_auth tool."""
 from __future__ import annotations
 
 from fastmcp import Client
@@ -18,14 +18,19 @@ async def test_verify_auth_success(mcp_client: Client, fake_client: FakeClient) 
             "is_superuser": False,
         },
     )
-    result = await mcp_client.call_tool("verify_auth", {})
-    assert result.data["authenticated"] is True
-    assert result.data["user"]["username"] == "alice"
-    assert result.data["base_url"] == "http://test.invalid"
+    result = await mcp_client.call_tool("paperless_verify_auth", {})
+    assert result.structured_content["authenticated"] is True
+    assert result.structured_content["user"]["username"] == "alice"
+    assert result.structured_content["base_url"] == "http://test.invalid"
 
 
-async def test_verify_auth_failure(mcp_client: Client, fake_client: FakeClient) -> None:
-    fake_client.set_get_error("/api/profile/", 401, "unauthorized")
-    result = await mcp_client.call_tool("verify_auth", {})
-    assert result.data["authenticated"] is False
-    assert result.data["status"] == 401
+async def test_verify_auth_failure_redacts_body(
+    mcp_client: Client, fake_client: FakeClient
+) -> None:
+    fake_client.set_get_error("/api/profile/", 401, "secret upstream body")
+    result = await mcp_client.call_tool("paperless_verify_auth", {})
+    assert result.structured_content["authenticated"] is False
+    assert result.structured_content["status"] == 401
+    # Upstream body must not be echoed to the client.
+    assert "error" not in result.structured_content
+    assert "secret upstream body" not in str(result.structured_content)
