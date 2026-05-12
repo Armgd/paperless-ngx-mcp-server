@@ -5,7 +5,6 @@ combine multiple endpoints into single tool calls.
 """
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 from typing import Annotated, Any, cast
 
@@ -18,23 +17,30 @@ from ..app import READ_ONLY, client, mcp
 from ..client import PaperlessAPIError
 from ._filters import FilterRequest, build_document_filters
 from ._helpers import slim_document
+from ._schemas import (
+    AnswerResponse,
+    AnswerSource,
+    DocumentListResponse,
+    make_page_info,
+)
 
 
 @mcp.tool(annotations=READ_ONLY)
-async def find_documents(
+async def paperless_find_documents(
+    ctx: Context,
     correspondent_name: Annotated[str | None, Field(description="Correspondent name (resolved to id)")] = None,
     document_type_name: Annotated[str | None, Field(description="Doc type name (resolved to id)")] = None,
     storage_path_name: Annotated[str | None, Field(description="Storage path name (resolved to id)")] = None,
     tag_names_all: Annotated[list[str] | None, Field(description="All tag names (resolved)")] = None,
     tag_names_any: Annotated[list[str] | None, Field(description="Any tag names (resolved)")] = None,
     title_contains: Annotated[str | None, Field(description="Title icontains")] = None,
-    text_contains: Annotated[str | None, Field(description="OCR content icontains (DB-only, no relevance ranking — prefer answer_from_documents for relevance)")] = None,
+    text_contains: Annotated[str | None, Field(description="OCR content icontains (DB-only, no relevance ranking — prefer paperless_answer_from_documents for relevance)")] = None,
     year: Annotated[int | None, Field(description="Document creation year")] = None,
     month: Annotated[int | None, Field(description="Document creation month 1-12")] = None,
     created_after: Annotated[str | None, Field(description="ISO YYYY-MM-DD")] = None,
     created_before: Annotated[str | None, Field(description="ISO YYYY-MM-DD")] = None,
     max_results: Annotated[int, Field(ge=1, le=200)] = 50,
-) -> dict[str, Any]:
+) -> DocumentListResponse:
     """Find documents using human-friendly names. Resolves names→IDs then queries.
 
     Use this when the user asks about documents from a person/company, of a type,
@@ -53,63 +59,86 @@ async def find_documents(
         created_after=created_after,
         created_before=created_before,
     )
+    await ctx.debug("resolving names to ids")
     filter_params, unresolved = await build_document_filters(req)
+    if unresolved:
+        await ctx.warning(f"unresolved names ignored: {unresolved}")
     params: dict[str, Any] = {"ordering": "-created", **filter_params}
 
-    docs = await client.paginate("/api/documents/", params=params, max_items=max_results)
-    return {
-        "count": len(docs),
-        "unresolved": unresolved,
-        "filters_applied": {k: v for k, v in params.items() if k != "ordering"},
-        "documents": [slim_document(d) for d in docs],
-    }
+    async def _progress(seen: int, total: int | None) -> None:
+        if total is not None:
+            await ctx.report_progress(progress=seen, total=total)
+
+    docs, total, has_more = await client.paginate(
+        "/api/documents/", params=params, max_items=max_results, progress_cb=_progress
+    )
+    await ctx.info(
+        f"returned {len(docs)} documents"
+        + (f" of {total} total" if total is not None else "")
+    )
+    return DocumentListResponse(
+        documents=[slim_document(d) for d in docs],  # type: ignore[misc]
+        page_info=make_page_info(len(docs), total, has_more, max_results),
+        unresolved=unresolved,
+        filters_applied={k: v for k, v in params.items() if k != "ordering"},
+    )
 
 
 @mcp.tool(annotations=READ_ONLY)
-async def answer_from_documents(
+async def paperless_answer_from_documents(
+    ctx: Context,
     query: Annotated[str, Field(description="Natural-language question or full-text query")],
     top_k: Annotated[int, Field(ge=1, le=20)] = 5,
     excerpt_chars: Annotated[
         int, Field(ge=200, le=20_000, description="Max OCR chars per excerpt")
     ] = 4000,
-) -> dict[str, Any]:
+) -> AnswerResponse:
     """RAG helper: full-text search, then return top-k docs with content excerpts.
 
     Use this for any "what does my paperwork say about X" / "find me the invoice
     where Y" question — gives the model retrieved excerpts ready to synthesize.
     """
+    await ctx.debug(f"full-text search query={query!r} top_k={top_k}")
     search = await client.get("/api/search/", params={"query": query})
     hits = (search.get("results") or [])[:top_k] if isinstance(search, dict) else []
+    total_hits = len(hits)
+    await ctx.info(f"enriching {total_hits} hits with content excerpts")
 
-    async def _enrich(hit: dict[str, Any]) -> dict[str, Any]:
+    enriched: list[AnswerSource] = []
+
+    async def _enrich(hit: dict[str, Any]) -> AnswerSource:
         doc_id = hit.get("id")
         if doc_id is None:
-            return hit
+            return cast(AnswerSource, dict(hit))
         try:
             doc = await client.get(f"/api/documents/{doc_id}/")
         except PaperlessAPIError as e:
-            return {**hit, "fetch_error": str(e)}
+            await ctx.warning(f"failed to fetch document {doc_id}: {e.status}")
+            return AnswerSource(id=doc_id, fetch_error_status=e.status)
         content = (doc.get("content") or "")[:excerpt_chars]
-        return {
-            "id": doc.get("id"),
-            "title": doc.get("title"),
-            "created": doc.get("created"),
-            "correspondent": doc.get("correspondent"),
-            "document_type": doc.get("document_type"),
-            "tags": doc.get("tags"),
-            "score": hit.get("score"),
-            "highlights": hit.get("highlights") or hit.get("note_highlights"),
-            "excerpt": content,
-            "excerpt_truncated": len(doc.get("content") or "") > excerpt_chars,
-        }
+        return AnswerSource(
+            id=doc.get("id"),
+            title=doc.get("title"),
+            created=doc.get("created"),
+            correspondent=doc.get("correspondent"),
+            document_type=doc.get("document_type"),
+            tags=doc.get("tags"),
+            score=hit.get("score"),
+            highlights=hit.get("highlights") or hit.get("note_highlights"),
+            excerpt=content,
+            excerpt_truncated=len(doc.get("content") or "") > excerpt_chars,
+        )
 
-    enriched = await asyncio.gather(*[_enrich(h) for h in hits])
-    return {
-        "query": query,
-        "total_hits": search.get("count") if isinstance(search, dict) else len(hits),
-        "returned": len(enriched),
-        "sources": list(enriched),
-    }
+    for idx, hit in enumerate(hits, start=1):
+        enriched.append(await _enrich(hit))
+        await ctx.report_progress(progress=idx, total=total_hits)
+
+    return AnswerResponse(
+        query=query,
+        total_hits=search.get("count") if isinstance(search, dict) else len(hits),
+        returned=len(enriched),
+        sources=enriched,
+    )
 
 
 @dataclass
@@ -124,7 +153,7 @@ class _FilterForm:
 
 
 @mcp.tool(annotations=READ_ONLY)
-async def interactive_search(
+async def paperless_interactive_search(
     ctx: Context,
     max_results: Annotated[int, Field(ge=1, le=200)] = 25,
 ) -> dict[str, Any]:
@@ -132,8 +161,9 @@ async def interactive_search(
 
     Use when user asks vague questions like "find my documents" without enough detail.
     Asks: which strategy (full-text / filters / recent), then gathers needed inputs.
-    Raises `ToolError` naming alternative tools (`find_documents`, `answer_from_documents`,
-    `recent_documents`) if the client doesn't support MCP elicitation.
+    Raises `ToolError` naming alternative tools (`paperless_find_documents`,
+    `paperless_answer_from_documents`, `paperless_recent_documents`) if the client
+    doesn't support MCP elicitation.
     """
     try:
         strategy = await ctx.elicit(
@@ -142,8 +172,9 @@ async def interactive_search(
         )
     except (McpError, NotImplementedError, RuntimeError) as exc:
         raise ToolError(
-            "interactive_search requires a client that supports MCP elicitation. "
-            "Use find_documents, answer_from_documents, or recent_documents instead."
+            "paperless_interactive_search requires a client that supports MCP elicitation. "
+            "Use paperless_find_documents, paperless_answer_from_documents, or "
+            "paperless_recent_documents instead."
         ) from exc
     if strategy.action != "accept":
         return {"status": strategy.action, "step": "strategy"}
@@ -172,14 +203,14 @@ async def interactive_search(
         days_int = max(1, int(days_raw) if isinstance(days_raw, (int, str)) else 1)
         since = (date.today() - timedelta(days=days_int)).isoformat()
         recent_params = {"added__date__gte": since, "ordering": "-added"}
-        recent_docs = await client.paginate(
+        recent_docs, total, has_more = await client.paginate(
             "/api/documents/", params=recent_params, max_items=max_results
         )
         return {
             "strategy": "recent",
             "since": since,
-            "count": len(recent_docs),
             "documents": [slim_document(d) for d in recent_docs],
+            "page_info": make_page_info(len(recent_docs), total, has_more, max_results),
         }
 
     form = await ctx.elicit(
@@ -215,20 +246,21 @@ async def interactive_search(
         if confirm.action != "accept":
             return {"status": confirm.action, "step": "confirm_unfiltered"}
 
-    filter_docs = await client.paginate(
+    filter_docs, total, has_more = await client.paginate(
         "/api/documents/", params=filter_params, max_items=max_results
     )
     return {
         "strategy": "filters",
         "unresolved": unresolved,
         "filters_applied": {k: v for k, v in filter_params.items() if k != "ordering"},
-        "count": len(filter_docs),
         "documents": [slim_document(d) for d in filter_docs],
+        "page_info": make_page_info(len(filter_docs), total, has_more, max_results),
     }
 
 
 @mcp.tool(annotations=READ_ONLY)
-async def recent_documents(
+async def paperless_recent_documents(
+    ctx: Context,
     days: Annotated[int, Field(ge=1, le=3650, description="Look back window in days")] = 30,
     limit: Annotated[int, Field(ge=1, le=200)] = 20,
     by: Annotated[str, Field(description="'added' or 'created'")] = "added",
@@ -239,10 +271,19 @@ async def recent_documents(
     field = "added" if by == "added" else "created"
     since = (date.today() - timedelta(days=days)).isoformat()
     params = {f"{field}__date__gte": since, "ordering": f"-{field}"}
-    docs = await client.paginate("/api/documents/", params=params, max_items=limit)
+    await ctx.debug(f"recent_documents since={since} by={field}")
+
+    async def _progress(seen: int, total: int | None) -> None:
+        if total is not None:
+            await ctx.report_progress(progress=seen, total=total)
+
+    docs, total, has_more = await client.paginate(
+        "/api/documents/", params=params, max_items=limit, progress_cb=_progress
+    )
+    await ctx.info(f"returned {len(docs)} recent documents")
     return {
         "since": since,
         "by": field,
-        "count": len(docs),
         "documents": [slim_document(d) for d in docs],
+        "page_info": make_page_info(len(docs), total, has_more, limit),
     }
