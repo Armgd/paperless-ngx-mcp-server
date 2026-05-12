@@ -45,13 +45,16 @@ async def test_get_raises_on_4xx() -> None:
     with pytest.raises(PaperlessAPIError) as exc:
         await c.get("/api/missing/")
     assert exc.value.status == 404
+    # body is retained on the exception object but redacted from the message.
+    assert "not found" not in str(exc.value)
+    assert exc.value.body == "not found"
     await c.aclose()
 
 
 async def test_paginate_walks_pages() -> None:
     pages = {
-        1: {"results": [{"id": 1}, {"id": 2}], "next": "http://x/?page=2"},
-        2: {"results": [{"id": 3}], "next": None},
+        1: {"results": [{"id": 1}, {"id": 2}], "next": "http://x/?page=2", "count": 3},
+        2: {"results": [{"id": 3}], "next": None, "count": 3},
     }
 
     def handler(req: httpx.Request) -> httpx.Response:
@@ -59,8 +62,10 @@ async def test_paginate_walks_pages() -> None:
         return httpx.Response(200, json=pages[page])
 
     c = _make_client(handler)
-    items = await c.paginate("/api/list/")
+    items, total, has_more = await c.paginate("/api/list/")
     assert [i["id"] for i in items] == [1, 2, 3]
+    assert total == 3
+    assert has_more is False
     await c.aclose()
 
 
@@ -71,12 +76,15 @@ async def test_paginate_respects_max_items() -> None:
             json={
                 "results": [{"id": i} for i in range(10)],
                 "next": "http://x/?page=2",
+                "count": 20,
             },
         )
 
     c = _make_client(handler)
-    items = await c.paginate("/api/list/", max_items=5)
+    items, total, has_more = await c.paginate("/api/list/", max_items=5)
     assert len(items) == 5
+    assert total == 20
+    assert has_more is True
     await c.aclose()
 
 
@@ -85,8 +93,10 @@ async def test_paginate_handles_plain_list() -> None:
         return httpx.Response(200, json=[{"id": 1}, {"id": 2}])
 
     c = _make_client(handler)
-    items = await c.paginate("/api/list/")
+    items, total, has_more = await c.paginate("/api/list/")
     assert items == [{"id": 1}, {"id": 2}]
+    assert total is None
+    assert has_more is False
     await c.aclose()
 
 
@@ -95,8 +105,10 @@ async def test_paginate_caps_plain_list_with_max_items() -> None:
         return httpx.Response(200, json=[{"id": i} for i in range(10)])
 
     c = _make_client(handler)
-    items = await c.paginate("/api/list/", max_items=3)
+    items, total, has_more = await c.paginate("/api/list/", max_items=3)
     assert len(items) == 3
+    assert total is None
+    assert has_more is True
     await c.aclose()
 
 
@@ -123,6 +135,62 @@ async def test_request_strips_none_params() -> None:
     assert "b" not in captured["params"]
     assert captured["params"]["a"] == "1"
     await c.aclose()
+
+
+async def test_paginate_invokes_progress_cb() -> None:
+    pages = {
+        1: {
+            "count": 3,
+            "next": "http://x/?page=2",
+            "results": [{"id": 1}, {"id": 2}],
+        },
+        2: {"count": 3, "next": None, "results": [{"id": 3}]},
+    }
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        page = int(req.url.params.get("page", "1"))
+        return httpx.Response(200, json=pages[page])
+
+    c = _make_client(handler)
+    calls: list[tuple[int, int | None]] = []
+
+    async def record(seen: int, total: int | None) -> None:
+        calls.append((seen, total))
+
+    items, total, has_more = await c.paginate("/api/documents/", progress_cb=record)
+    await c.aclose()
+    assert items == [{"id": 1}, {"id": 2}, {"id": 3}]
+    assert total == 3
+    assert has_more is False
+    assert calls == [(2, 3), (3, 3)]
+
+
+async def test_paginate_progress_cb_on_truncation() -> None:
+    pages = {
+        1: {
+            "count": 5,
+            "next": "http://x/?page=2",
+            "results": [{"id": 1}, {"id": 2}, {"id": 3}],
+        },
+        2: {"count": 5, "next": None, "results": [{"id": 4}, {"id": 5}]},
+    }
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        page = int(req.url.params.get("page", "1"))
+        return httpx.Response(200, json=pages[page])
+
+    c = _make_client(handler)
+    calls: list[tuple[int, int | None]] = []
+
+    async def record(seen: int, total: int | None) -> None:
+        calls.append((seen, total))
+
+    items, total, has_more = await c.paginate("/api/documents/", max_items=2, progress_cb=record)
+    await c.aclose()
+    assert items == [{"id": 1}, {"id": 2}]
+    assert total == 5
+    assert has_more is True
+    assert calls == [(2, 5)]
 
 
 async def test_request_expect_headers_returns_tuple() -> None:

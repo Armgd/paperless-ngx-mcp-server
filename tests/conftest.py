@@ -80,12 +80,21 @@ class FakeClient:
         *,
         max_items: int | None = None,
         page_size: int = 100,
-    ) -> list[dict[str, Any]]:
+        progress_cb: Any = None,
+    ) -> tuple[list[dict[str, Any]], int | None, bool]:
         self.calls.append(("PAGINATE", path, params))
         if path not in self.paginate_responses:
             raise AssertionError(f"Unexpected PAGINATE {path}")
         items = self.paginate_responses[path]
-        return items[:max_items] if max_items is not None else items
+        total = len(items)
+        if max_items is not None and len(items) > max_items:
+            truncated = items[:max_items]
+            if progress_cb is not None:
+                await progress_cb(len(truncated), total)
+            return truncated, total, True
+        if progress_cb is not None:
+            await progress_cb(len(items), total)
+        return items, total, False
 
 
 @pytest.fixture
