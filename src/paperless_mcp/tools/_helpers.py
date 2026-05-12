@@ -47,3 +47,21 @@ def slim_document(doc: dict[str, Any]) -> dict[str, Any]:
         "notes",
     }
     return {k: v for k, v in doc.items() if k in keep}
+
+
+def slim_metadata(meta: dict[str, Any]) -> dict[str, Any]:
+    """Trim verbose document metadata. Drops original_metadata / archive_metadata arrays."""
+    keep = {
+        "original_checksum",
+        "original_size",
+        "original_mime_type",
+        "original_filename",
+        "archive_checksum",
+        "archive_size",
+        "archive_filename",
+        "media_filename",
+        "has_archive_version",
+        "lang",
+        "page_count",
+    }
+    return {k: v for k, v in meta.items() if k in keep}
