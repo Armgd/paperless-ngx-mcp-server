@@ -107,7 +107,8 @@ def fake_client(monkeypatch: pytest.MonkeyPatch) -> FakeClient:
     from paperless_mcp.tools import (
         _helpers, auth, documents, highlevel, search, stats, tasks, taxonomy,
     )
-    for mod in (_helpers, auth, documents, highlevel, search, stats, tasks, taxonomy):
+    from paperless_mcp.resources import documents as resources_documents
+    for mod in (_helpers, auth, documents, highlevel, search, stats, tasks, taxonomy, resources_documents):
         monkeypatch.setattr(mod, "client", fake)
     return fake
 
