@@ -1,7 +1,6 @@
 """High-level composed tools."""
 from __future__ import annotations
 
-import pytest
 from fastmcp import Client
 
 from .conftest import FakeClient
